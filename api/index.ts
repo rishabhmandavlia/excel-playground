@@ -11,7 +11,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const host = req.headers.host ?? "localhost";
   const requestUrl = new URL(req.url ?? "/api", `${protocol}://${host}`);
   const headers = new Headers();
-  Object.entries(req.headers).forEach(([key, value]) => { if (value) headers.set(key, Array.isArray(value) ? value.join(", ") : value); });
+  Object.entries(req.headers).forEach(([key, value]) => {
+    if (value) headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+  });
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
   const response = await app.handle(new Request(requestUrl, { method: req.method, headers, body }));
   res.statusCode = response.status;
@@ -19,4 +21,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
-function readBody(req: IncomingMessage): Promise<Buffer> { return new Promise((resolve, reject) => { const chunks: Buffer[] = []; req.on("data", (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))); req.on("end", () => resolve(Buffer.concat(chunks))); req.on("error", reject); }); }
+function readBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
