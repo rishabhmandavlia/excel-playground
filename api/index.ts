@@ -1,49 +1,20 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import ExcelJS from "exceljs";
+import { createMemoryRepository } from "../src/modules/excel-master/repository";
+import { createClientWorkbook, createDemoWorkbook, createServiceWorkbook, createWorkbook, emptyData, parseWorkbook, validationReportRows } from "../src/modules/excel-master/workbook";
 
-let appPromise: Promise<unknown> | undefined;
+const repository = createMemoryRepository();
 
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  try {
-    const protocol = String(req.headers["x-forwarded-proto"] ?? "https").split(",")[0];
-    const host = req.headers.host ?? "localhost";
-    const requestUrl = new URL(req.url ?? "/api", `${protocol}://${host}`);
-    const rewrittenPath = requestUrl.searchParams.get("path");
-    if (requestUrl.pathname === "/api" && rewrittenPath) {
-      requestUrl.pathname = `/api/${rewrittenPath.replace(/^\/+/, "")}`;
-      requestUrl.search = "";
-    }
-    const headers = new Headers();
-    Object.entries(req.headers).forEach(([key, value]) => {
-      if (value) headers.set(key, Array.isArray(value) ? value.join(", ") : value);
-    });
-    const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
-    const app = (await getApp()) as { handle(request: Request): Promise<Response> };
-    const response = await app.handle(new Request(requestUrl, { method: req.method, headers, body }));
-    res.statusCode = response.status;
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-    res.end(Buffer.from(await response.arrayBuffer()));
-  } catch (error) {
-    console.error("Excel API invocation failed", error);
-    res.statusCode = 500;
-    res.setHeader("content-type", "application/json; charset=utf-8");
-    res.end(JSON.stringify({ error: "EXCEL_API_INVOCATION_FAILED", message: error instanceof Error ? error.message : "Unknown server error" }));
-  }
+  try { const path = requestPath(req); if (req.method === "GET") return await handleDownload(path, res); if (req.method === "POST") return await handlePost(path, req, res); sendJson(res, 405, { error: "METHOD_NOT_ALLOWED" }); } catch (error) { console.error("Excel API invocation failed", error); sendJson(res, 500, { error: "EXCEL_API_INVOCATION_FAILED", message: errorMessage(error) }); }
 }
 
-async function getApp(): Promise<unknown> {
-  appPromise ??= (async () => {
-    const { Elysia } = await import("elysia");
-    const { excelMasterModule } = await import("../src/modules/excel-master/index.ts");
-    return new Elysia({ prefix: "/api" }).use(excelMasterModule);
-  })();
-  return appPromise;
-}
-
-function readBody(req: IncomingMessage): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
-}
+async function handleDownload(path: string, res: ServerResponse): Promise<void> { const files: Record<string, () => Promise<Uint8Array>> = { "blank-template": () => createWorkbook(emptyData()), "client-demo": () => createClientWorkbook(), "client-template": () => createClientWorkbook(), demo: () => createDemoWorkbook(), "service-demo": () => createServiceWorkbook(), "service-template": () => createServiceWorkbook(), template: () => createWorkbook() }; const builder = files[path]; if (!builder) return sendJson(res, 404, { error: "NOT_FOUND", path }); sendFile(res, 200, await builder(), `${path}.xlsx`); }
+async function handlePost(path: string, req: IncomingMessage, res: ServerResponse): Promise<void> { const body = JSON.parse((await readBody(req)).toString("utf8")) as { workbookBase64?: string }; if (!body.workbookBase64) return sendJson(res, 400, { error: "WORKBOOK_REQUIRED" }); const result = await parseWorkbook(Uint8Array.from(Buffer.from(body.workbookBase64, "base64"))); if (path === "validate") return sendJson(res, 200, { data: summary(result) }); if (path === "import") { if (result.issues.some((issue) => issue.severity === "ERROR")) return sendJson(res, 422, { data: { imported: false, issues: result.issues } }); await repository.replace(result.data); return sendJson(res, 200, { data: { imported: true, issues: result.issues } }); } if (path === "report") return sendFile(res, 200, await reportWorkbook(result.issues), "validation-report.xlsx"); sendJson(res, 404, { error: "NOT_FOUND", path }); }
+function requestPath(req: IncomingMessage): string { const url = new URL(req.url ?? "/api", `https://${req.headers.host ?? "localhost"}`); const rewritten = url.searchParams.get("path"); const pathname = url.pathname === "/api" && rewritten ? `/api/${rewritten}` : url.pathname; return pathname.replace(/^\/api\/excel-master\/?/u, "").replace(/^\/+|\/+$/gu, ""); }
+function summary(result: Awaited<ReturnType<typeof parseWorkbook>>) { return { issues: result.issues, errorCount: result.issues.filter((issue) => issue.severity === "ERROR").length, warningCount: result.issues.filter((issue) => issue.severity === "WARNING").length, rows: Object.values(result.data).reduce((total, rows) => total + rows.length, 0) }; }
+function errorMessage(error: unknown): string { return error instanceof Error ? error.stack ?? error.message : String(error); }
+function sendJson(res: ServerResponse, status: number, body: unknown): void { const payload = Buffer.from(JSON.stringify(body)); res.statusCode = status; res.setHeader("content-type", "application/json; charset=utf-8"); res.setHeader("content-length", payload.length); res.end(payload); }
+function sendFile(res: ServerResponse, status: number, bytes: Uint8Array, name: string): void { const payload = Buffer.from(bytes); res.statusCode = status; res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); res.setHeader("content-disposition", `attachment; filename="${name}"`); res.setHeader("content-length", payload.length); res.end(payload); }
+function readBody(req: IncomingMessage): Promise<Buffer> { return new Promise((resolve, reject) => { const chunks: Buffer[] = []; req.on("data", (chunk: Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))); req.on("end", () => resolve(Buffer.concat(chunks))); req.on("error", reject); }); }
+async function reportWorkbook(issues: Parameters<typeof validationReportRows>[0]): Promise<Uint8Array> { const workbook = new ExcelJS.Workbook(); const sheet = workbook.addWorksheet("ValidationReport"); sheet.addRow(["severity", "code", "sheet", "row", "column", "header", "value", "message"]); validationReportRows(issues).forEach((row) => sheet.addRow(row)); for (let index = 1; index <= 8; index += 1) { const cell = sheet.getCell(1, index); cell.font = { bold: true }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FEE2E2" } }; } sheet.columns = [18, 28, 24, 10, 10, 34, 40, 100].map((width) => ({ width })); return new Uint8Array((await workbook.xlsx.writeBuffer()) as unknown as ArrayBuffer); }
