@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  color: #172033;
+  background: #f6f8fb;
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+body { min-width: 320px; min-height: 100vh; margin: 0; }
+button, input { font: inherit; }

@@ -1,0 +1,30 @@
+{
+  "name": "excel-import-export-module",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --parallel dev:api dev:web",
+    "dev:api": "bun --watch src/server.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "vercel-build": "bun run build",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.1.0",
+    "elysia": "^1.4.29",
+    "exceljs": "4.4.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "vite": "^8.2.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/bun": "^1.4.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6"
+  }
+}
