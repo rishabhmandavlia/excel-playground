@@ -69,6 +69,23 @@ export function Component() {
             before anything is imported.
           </p>
         </div>
+        <a
+          className="mb-4 flex items-center justify-between gap-5 rounded-2xl border border-indigo-100 bg-indigo-50 p-5 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-100"
+          href="/docs"
+        >
+          <div className="flex items-center gap-4">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-xl font-bold text-white">
+              ?
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-950">How it works</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Learn which workbook to choose, what each field means, and how validation protects your import.
+              </p>
+            </div>
+          </div>
+          <span className="shrink-0 text-sm font-bold text-indigo-700">Open guide →</span>
+        </a>
         <div className="grid items-stretch gap-4 md:grid-cols-3">
           <DownloadCard
             title="Client workbook"
