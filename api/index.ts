@@ -11,6 +11,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const protocol = String(req.headers["x-forwarded-proto"] ?? "https").split(",")[0];
     const host = req.headers.host ?? "localhost";
     const requestUrl = new URL(req.url ?? "/api", `${protocol}://${host}`);
+    const rewrittenPath = requestUrl.searchParams.get("path");
+    if (requestUrl.pathname === "/api" && rewrittenPath) {
+      requestUrl.pathname = `/api/${rewrittenPath.replace(/^\/+/, "")}`;
+      requestUrl.search = "";
+    }
     const headers = new Headers();
     Object.entries(req.headers).forEach(([key, value]) => {
       if (value) headers.set(key, Array.isArray(value) ? value.join(", ") : value);
