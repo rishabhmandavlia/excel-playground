@@ -1,10 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { Elysia } from "elysia";
-
-import { excelMasterModule } from "../src/modules/excel-master/index";
-
-const app = new Elysia({ prefix: "/api" }).use(excelMasterModule);
+let appPromise: Promise<unknown> | undefined;
 
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
@@ -21,6 +17,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       if (value) headers.set(key, Array.isArray(value) ? value.join(", ") : value);
     });
     const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
+    const app = (await getApp()) as { handle(request: Request): Promise<Response> };
     const response = await app.handle(new Request(requestUrl, { method: req.method, headers, body }));
     res.statusCode = response.status;
     response.headers.forEach((value, key) => res.setHeader(key, value));
@@ -31,6 +28,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     res.setHeader("content-type", "application/json; charset=utf-8");
     res.end(JSON.stringify({ error: "EXCEL_API_INVOCATION_FAILED", message: error instanceof Error ? error.message : "Unknown server error" }));
   }
+}
+
+async function getApp(): Promise<unknown> {
+  appPromise ??= (async () => {
+    const { Elysia } = await import("elysia");
+    const { excelMasterModule } = await import("../src/modules/excel-master/index");
+    return new Elysia({ prefix: "/api" }).use(excelMasterModule);
+  })();
+  return appPromise;
 }
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
