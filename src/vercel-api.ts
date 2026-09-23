@@ -1,14 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import ExcelJS from "exceljs";
-import { createMemoryRepository } from "../src/modules/excel-master/repository";
-import { createClientWorkbook, createDemoWorkbook, createServiceWorkbook, createWorkbook, emptyData, parseWorkbook, validationReportRows } from "../src/modules/excel-master/workbook";
+import { createMemoryRepository } from "./modules/excel-master/repository";
+import { createClientWorkbook, createDemoWorkbook, createServiceWorkbook, createWorkbook, emptyData, parseWorkbook, validationReportRows } from "./modules/excel-master/workbook";
 
 const repository = createMemoryRepository();
-
-export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  try { const path = requestPath(req); if (req.method === "GET") return await handleDownload(path, res); if (req.method === "POST") return await handlePost(path, req, res); sendJson(res, 405, { error: "METHOD_NOT_ALLOWED" }); } catch (error) { console.error("Excel API invocation failed", error); sendJson(res, 500, { error: "EXCEL_API_INVOCATION_FAILED", message: errorMessage(error) }); }
-}
-
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> { try { const path = requestPath(req); if (req.method === "GET") return await handleDownload(path, res); if (req.method === "POST") return await handlePost(path, req, res); sendJson(res, 405, { error: "METHOD_NOT_ALLOWED" }); } catch (error) { console.error("Excel API invocation failed", error); sendJson(res, 500, { error: "EXCEL_API_INVOCATION_FAILED", message: errorMessage(error) }); } }
 async function handleDownload(path: string, res: ServerResponse): Promise<void> { const files: Record<string, () => Promise<Uint8Array>> = { "blank-template": () => createWorkbook(emptyData()), "client-demo": () => createClientWorkbook(), "client-template": () => createClientWorkbook(), demo: () => createDemoWorkbook(), "service-demo": () => createServiceWorkbook(), "service-template": () => createServiceWorkbook(), template: () => createWorkbook() }; const builder = files[path]; if (!builder) return sendJson(res, 404, { error: "NOT_FOUND", path }); sendFile(res, 200, await builder(), `${path}.xlsx`); }
 async function handlePost(path: string, req: IncomingMessage, res: ServerResponse): Promise<void> { const body = JSON.parse((await readBody(req)).toString("utf8")) as { workbookBase64?: string }; if (!body.workbookBase64) return sendJson(res, 400, { error: "WORKBOOK_REQUIRED" }); const result = await parseWorkbook(Uint8Array.from(Buffer.from(body.workbookBase64, "base64"))); if (path === "validate") return sendJson(res, 200, { data: summary(result) }); if (path === "import") { if (result.issues.some((issue) => issue.severity === "ERROR")) return sendJson(res, 422, { data: { imported: false, issues: result.issues } }); await repository.replace(result.data); return sendJson(res, 200, { data: { imported: true, issues: result.issues } }); } if (path === "report") return sendFile(res, 200, await reportWorkbook(result.issues), "validation-report.xlsx"); sendJson(res, 404, { error: "NOT_FOUND", path }); }
 function requestPath(req: IncomingMessage): string { const url = new URL(req.url ?? "/api", `https://${req.headers.host ?? "localhost"}`); const rewritten = url.searchParams.get("path"); const pathname = url.pathname === "/api" && rewritten ? `/api/${rewritten}` : url.pathname; return pathname.replace(/^\/api\/excel-master\/?/u, "").replace(/^\/+|\/+$/gu, ""); }
