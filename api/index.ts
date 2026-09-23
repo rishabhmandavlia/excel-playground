@@ -33,7 +33,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 async function getApp(): Promise<unknown> {
   appPromise ??= (async () => {
     const { Elysia } = await import("elysia");
-    const { excelMasterModule } = await import("../src/modules/excel-master/index");
+    const { excelMasterModule } = await import("../src/modules/excel-master/index.ts");
     return new Elysia({ prefix: "/api" }).use(excelMasterModule);
   })();
   return appPromise;
